@@ -20,5 +20,7 @@ FROM scratch
 WORKDIR /
 EXPOSE 5000
 COPY --from=builder /app /
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 
 CMD ["/app"]
