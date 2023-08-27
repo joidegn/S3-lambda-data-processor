@@ -1,0 +1,2 @@
+record_id,accout_number,transaction_reference,amount,keyword
+1,12345678,14e56786,5000,DEPOSIT
