@@ -9,11 +9,12 @@ ENV GOOS="linux"
 ENV GOARCH="amd64"
 
 # Cache dependencies
-ADD processor.go go.mod go.sum ./
+ADD main.go handle.go go.mod go.sum ./
+COPY data/ data/
 RUN go mod download
 
 # Build
-RUN go build -a -o app processor.go
+RUN go build -a -o app
 
 # Copy artifacts to a clean image
 FROM scratch
