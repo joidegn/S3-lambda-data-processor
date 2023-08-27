@@ -5,11 +5,12 @@ import (
 	"path/filepath"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3notifications"
 
-	// "github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -27,19 +28,18 @@ func NewDataProcessorStack(scope constructs.Construct, id string, props *DataPro
 
 	dir, _ := os.Getwd()
 
-	ecr_image := awslambda.EcrImageCode_FromAssetImage(jsii.String(filepath.Join(dir, "lambda-image")),
+	ecr_image := awslambda.EcrImageCode_FromAssetImage(jsii.String(filepath.Join(dir, "data-processor")),
 		&awslambda.AssetImageCodeProps{},
 	)
 
 	// Create data processing lambda
 
 	dataProcessor := awslambda.NewFunction(stack, jsii.String("lambdaFromContainer"), &awslambda.FunctionProps{
-		Code: ecr_image,
-		// Handler and Runtime must be *FROM_IMAGE* when provisioning Lambda from container.
+		Code:         ecr_image,
 		Handler:      awslambda.Handler_FROM_IMAGE(),
 		Runtime:      awslambda.Runtime_FROM_IMAGE(),
-		FunctionName: jsii.String("sampleContainerFunction"),
-		Timeout:      awscdk.Duration_Seconds(jsii.Number(3)),
+		FunctionName: jsii.String("dataProcessor"),
+		Timeout:      awscdk.Duration_Seconds(jsii.Number(30)),
 	})
 
 	// Create s3 bucket and event notification.
@@ -49,6 +49,26 @@ func NewDataProcessorStack(scope constructs.Construct, id string, props *DataPro
 	notification := awss3notifications.NewLambdaDestination(dataProcessor)
 
 	s3.AddEventNotification(awss3.EventType_OBJECT_CREATED, notification)
+
+	s3.GrantRead(dataProcessor, nil) // grant the lambda role read access to the bucket
+
+	// Create Dynamodb database
+
+	table := awsdynamodb.NewTable(stack, jsii.String("database"), &awsdynamodb.TableProps{
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("object_reference"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+	})
+
+	// Grant the lambda role access to the database
+
+	statement := awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Effect:    awsiam.Effect_ALLOW,
+		Actions:   jsii.Strings("dynamodb:*"),
+		Resources: jsii.Strings("*"),
+	})
+	dataProcessor.AddToRolePolicy(statement)
 
 	// log lambda function ARN
 	awscdk.NewCfnOutput(stack, jsii.String("lambdaFunctionArn"), &awscdk.CfnOutputProps{
@@ -61,6 +81,16 @@ func NewDataProcessorStack(scope constructs.Construct, id string, props *DataPro
 		Value:       s3.BucketArn(),
 		Description: jsii.String("s3 bucket ARN"),
 	})
+
+	// log dynamodb ARN and table
+	awscdk.NewCfnOutput(stack, jsii.String("database-table-arn"),
+		&awscdk.CfnOutputProps{
+			ExportName: jsii.String("database-arn"),
+			Value:      table.TableArn()})
+	awscdk.NewCfnOutput(stack, jsii.String("database-table-name"),
+		&awscdk.CfnOutputProps{
+			ExportName: jsii.String("database-name"),
+			Value:      table.TableName()})
 
 	return stack
 }
